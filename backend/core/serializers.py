@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import User, Ticket, Message
 
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -21,13 +22,30 @@ class RegisterSerializer(serializers.ModelSerializer):
             role='customer'
         )
 
+
+class AdminUserCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['email', 'password', 'role', 'is_active']
+
+    def create(self, validated_data):
+        return User.objects.create_user(
+            email=validated_data['email'],
+            password=validated_data['password'],
+            role=validated_data.get('role', 'customer'),
+            is_active=validated_data.get('is_active', True),
+        )
+
+
 class MessageSerializer(serializers.ModelSerializer):
     author_email = serializers.CharField(source='author.email', read_only=True)
 
     class Meta:
         model = Message
         fields = ['id', 'ticket', 'author', 'author_email', 'body', 'created_at']
-        read_only_fields = ['author', 'created_at']
+        read_only_fields = ['author', 'ticket', 'created_at']
 
 
 class TicketSerializer(serializers.ModelSerializer):
