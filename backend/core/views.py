@@ -15,6 +15,7 @@ from .serializers import (
     TicketSerializer,
     MessageSerializer,
 )
+from .permissions import IsAdminRole, IsAgentRole, IsCustomerRole, IsAgentOrAdmin
 
 
 class RegisterView(APIView):
@@ -69,7 +70,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         return Ticket.objects.filter(created_by=user).order_by('-created_at')
 
     def perform_create(self, serializer):
-        if self.request.user.role != 'customer':
+        if not IsCustomerRole().has_permission(self.request, self):
             raise PermissionError("Only customers can create tickets.")
         serializer.save(created_by=self.request.user)
 
@@ -77,7 +78,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         ticket = self.get_object()
         user = request.user
 
-        if user.role == 'customer':
+        if IsCustomerRole().has_permission(request, self):
             if ticket.created_by != user:
                 return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
@@ -90,7 +91,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-        elif user.role == 'agent':
+        elif IsAgentRole().has_permission(request, self):
             return Response(
                 {"detail": "Agent cannot use this endpoint to update ticket."},
                 status=status.HTTP_403_FORBIDDEN
@@ -99,13 +100,13 @@ class TicketViewSet(viewsets.ModelViewSet):
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
+        if not IsAdminRole().has_permission(request, self):
             return Response({"detail": "Only admin can delete tickets."}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['patch'])
     def assign(self, request, pk=None):
-        if request.user.role != 'admin':
+        if not IsAdminRole().has_permission(request, self):
             return Response({"detail": "Only admin can assign tickets."}, status=status.HTTP_403_FORBIDDEN)
 
         ticket = self.get_object()
@@ -122,8 +123,8 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'])
     def status(self, request, pk=None):
-        if request.user.role != 'agent':
-            return Response({"detail": "Only agent can update status."}, status=status.HTTP_403_FORBIDDEN)
+        if not IsAgentOrAdmin().has_permission(request, self):
+            return Response({"detail": "Only agent or admin can update status."}, status=status.HTTP_403_FORBIDDEN)
 
         ticket = self.get_object()
         new_status = request.data.get('status')
@@ -138,7 +139,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'])
     def priority(self, request, pk=None):
-        if request.user.role != 'admin':
+        if not IsAdminRole().has_permission(request, self):
             return Response({"detail": "Only admin can update priority."}, status=status.HTTP_403_FORBIDDEN)
 
         ticket = self.get_object()
@@ -154,7 +155,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def close(self, request, pk=None):
-        if request.user.role not in ['agent', 'admin']:
+        if not IsAgentOrAdmin().has_permission(request, self):
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         ticket = self.get_object()
@@ -175,7 +176,7 @@ class TicketMessagesView(APIView):
         if not ticket:
             return Response({"detail": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == 'customer' and ticket.created_by != request.user:
+        if IsCustomerRole().has_permission(request, self) and ticket.created_by != request.user:
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         messages = ticket.messages.all().order_by('created_at')
@@ -186,7 +187,7 @@ class TicketMessagesView(APIView):
         if not ticket:
             return Response({"detail": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role == 'customer' and ticket.created_by != request.user:
+        if IsCustomerRole().has_permission(request, self) and ticket.created_by != request.user:
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = MessageSerializer(data=request.data)
@@ -203,29 +204,17 @@ class UserViewSet(viewsets.ModelViewSet):
             return AdminUserCreateSerializer
         return UserSerializer
 
-    def list(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-        return super().list(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-        return super().retrieve(request, *args, **kwargs)
-
-    def create(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-        return super().create(request, *args, **kwargs)
+    def get_permissions(self):
+        return [IsAdminRole()]
 
     def partial_update(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
+        if not IsAdminRole().has_permission(request, self):
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
     def deactivate(self, request, pk=None):
-        if request.user.role != 'admin':
+        if not IsAdminRole().has_permission(request, self):
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         user = self.get_object()
