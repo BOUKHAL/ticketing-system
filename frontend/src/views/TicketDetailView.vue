@@ -215,6 +215,7 @@ export default {
   props: ["id"],
   data() {
     return {
+      pollingInterval: null,
       isEditing: false,
       user: {},
       ticket: {},
@@ -394,6 +395,13 @@ export default {
     await this.fetchTicket();
     await this.fetchMessages();
     await this.fetchAgents();
+
+    this.pollingInterval = setInterval(() => {
+    this.fetchMessages();
+  }, 5000);
   },
+  unmounted() {
+  clearInterval(this.pollingInterval);
+},
 };
 </script>
